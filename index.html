@@ -3915,7 +3915,6 @@ function buildPriceListSection(p, isAdmin) {
     ...(hasInterior ? [{ key: 'interior', label: 'Interior m²', type: 'num' }] : []),
     ...(hasExterior ? [{ key: 'exterior', label: 'Exterior m²', type: 'num' }] : []),
     { key: 'status',        label: 'Status',         type: 'status' },
-    { key: 'startingPrice', label: 'Starting Price', type: 'price'  },
     { key: 'currentPrice',  label: 'Current Price',  type: 'price'  },
     ...(isAdmin ? [{ key: '_movement', label: 'Price Δ', type: 'movement' }] : []),
   ];
