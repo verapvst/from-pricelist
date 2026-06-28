@@ -785,7 +785,9 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   .admin-header { padding: 36px 20px; }
   .admin-header-inner { flex-direction: column; align-items: flex-start; }
   .admin-body { padding: 40px 20px 80px; }
-  .admin-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .admin-kpi-grid { flex-wrap: wrap; }
+  .admin-kpi { flex: 1 1 45%; min-width: 140px; padding: 20px 16px 20px 0; margin-right: 16px; }
+  .admin-kpi-value { font-size: 30px; }
   .admin-price-summary { grid-template-columns: repeat(2, 1fr); }
   .project-intel-block { padding: 36px 0 40px; }
   .project-intel-block { margin-bottom: 48px; }
@@ -1295,6 +1297,66 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
     .admin-commercial-grid { grid-template-columns: 1fr; }
     .admin-filter-bar { flex-direction: column; align-items: stretch; }
     .admin-filter-search { min-width: auto; }
+  }
+
+
+  /* ─── ADMIN MOBILE RESPONSIVE ─── */
+  @media (max-width: 768px) {
+    /* Tables: always scroll horizontally */
+    .admin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .admin-table-wrap table { min-width: 560px; }
+
+    /* Team grid: single column */
+    .admin-team-grid { grid-template-columns: 1fr; }
+    .admin-team-card { padding: 20px; }
+
+    /* Timeline: horizontal scroll */
+    .admin-tl2-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .admin-tl-rows2 { min-width: 560px; }
+    .admin-tl-axis2 { min-width: 560px; }
+    .admin-tl-label2 { min-width: 120px; width: 120px; font-size: 11px; }
+
+    /* Velocity charts: compress */
+    .admin-vel-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .admin-velocity-chart { height: 80px; gap: 3px; }
+    .admin-velocity-label { font-size: 9px; }
+    .admin-velocity-count { font-size: 9px; }
+
+    /* Filter bar date inputs: stack vertically */
+    .admin-filter-bar { gap: 8px; }
+    .admin-filter-bar input[type="date"] { width: 100%; min-width: auto; font-size: 13px; }
+    .admin-filter-label { font-size: 11px; }
+
+    /* Pricing bars */
+    .admin-price-bars { gap: 8px; }
+    .admin-price-bar-row { flex-wrap: wrap; gap: 4px; }
+    .admin-price-bar-label { width: 100%; font-size: 11px; }
+    .admin-price-bar-track { flex: 1 1 60%; }
+    .admin-price-bar-value { font-size: 12px; text-align: left; }
+
+    /* Insights/section headings */
+    .admin-insights { padding: 0; }
+    .admin-section-title { font-size: 11px; }
+
+    /* Commercial cards: already 1-col, but reduce padding */
+    .admin-commercial-card { padding: 16px; }
+    .admin-rank { font-size: 28px; }
+
+    /* KPI section in subviews */
+    .admin-kpi-row { flex-wrap: wrap; gap: 0; }
+
+    /* Tab content padding */
+    .admin-tab-content { padding-top: 8px; }
+
+    /* Health/quality grid */
+    .admin-health-grid { gap: 8px; }
+    .admin-health-card { padding: 16px; }
+
+    /* Stacked status bars in team: full width */
+    .admin-tl-stacked { min-width: 120px; }
+
+    /* Pipeline / detail tables inside team */
+    .admin-team-card table { min-width: 380px; }
   }
 
   /* ─── ADMIN ACCESS BUTTON + MODAL ─── */
