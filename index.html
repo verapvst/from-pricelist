@@ -1180,7 +1180,104 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
 }
   
 
-  /* ─── ADMIN PHASE 2 ─── */
+  
+function renderAdminTeam() {
+  const el = document.getElementById('admin-tab-team');
+  if (!el) return;
+
+  const byOwner = {};
+  ADMIN_UNITS.forEach(u => {
+    const o = u.co || 'Unassigned';
+    if (!byOwner[o]) byOwner[o] = { name:o, all:[], projs:new Set() };
+    byOwner[o].all.push(u);
+    byOwner[o].projs.add(u.p);
+  });
+
+  const owners = Object.values(byOwner).map(ow => {
+    const all      = ow.all;
+    const deeded   = all.filter(u=>u.s==='Deeded').length;
+    const pspa     = all.filter(u=>u.s==='PSPA').length;
+    const reserved = all.filter(u=>u.s==='Reserved').length;
+    const avail    = all.filter(u=>u.s==='Available').length;
+    const sold     = deeded + pspa + reserved;
+    const sellable = adminSellableUnits(all).length;
+    const st       = sellable ? Math.round(sold/sellable*100) : 0;
+    const avgDisc  = (() => { const ds=all.filter(u=>u.disc&&u.disc>0).map(u=>u.disc); return ds.length?ds.reduce((a,b)=>a+b,0)/ds.length:0; })();
+    const pricedSold = all.filter(u=>(u.s==='Deeded'||u.s==='PSPA')&&u.ps);
+    const totalRevenue = pricedSold.reduce((s,u)=>s+(u.ps||u.pc||0),0);
+    return { ...ow, deeded, pspa, reserved, avail, sold, st, avgDisc, totalRevenue, projCount:ow.projs.size };
+  }).sort((a,b)=>b.sold-a.sold);
+
+  const ownerCards = owners.map(ow=>`
+    <div class="admin-commercial-card">
+      <div class="admin-comm-name">${ow.name}</div>
+      <div class="admin-comm-region">${ow.projCount} project${ow.projCount!==1?'s':''} · ${ow.all.length} units</div>
+      <div class="admin-st-pct">${ow.st}%</div>
+      <div class="admin-st-bar-wrap"><div class="admin-st-bar" style="width:${ow.st}%"></div></div>
+      <div class="admin-comm-stats">
+        <div class="admin-comm-stat"><div class="admin-comm-stat-label">Deeded</div><div class="admin-comm-stat-value">${ow.deeded}</div></div>
+        <div class="admin-comm-stat"><div class="admin-comm-stat-label">PSPA</div><div class="admin-comm-stat-value">${ow.pspa}</div></div>
+        <div class="admin-comm-stat"><div class="admin-comm-stat-label">Reserved</div><div class="admin-comm-stat-value">${ow.reserved}</div></div>
+        <div class="admin-comm-stat"><div class="admin-comm-stat-label">Available</div><div class="admin-comm-stat-value">${ow.avail}</div></div>
+        ${ow.avgDisc>0?`<div class="admin-comm-stat"><div class="admin-comm-stat-label">Avg Disc.</div><div class="admin-comm-stat-value" style="color:#e67e22">${ow.avgDisc.toFixed(1)}%</div></div>`:''}
+      </div>
+    </div>`).join('');
+
+  // Per-owner velocity (reservations last 12 months)
+  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-12);
+  const cutStr  = cutoff.toISOString().slice(0,7);
+  const recentVel = {};
+  ADMIN_UNITS.forEach(u => {
+    if (!u.rd || !/^\d{4}/.test(u.rd) || u.rd.slice(0,7) < cutStr) return;
+    const o = u.co || 'Unassigned';
+    if (!recentVel[o]) recentVel[o] = 0;
+    recentVel[o]++;
+  });
+  const velRows = Object.entries(recentVel).sort((a,b)=>b[1]-a[1]).map(([o,n])=>`
+    <tr><td>${o}</td><td class="num">${n}</td></tr>`).join('');
+
+  // Project breakdown per owner
+  const ownerProjRows = owners.map(ow => {
+    const projBreakdown = [...ow.projs].map(p => {
+      const pUnits = ow.all.filter(u=>u.p===p);
+      const pSold  = adminSoldUnits(pUnits).length;
+      return `${p} (${pSold}/${pUnits.length})`;
+    }).join(' · ');
+    return `<tr>
+      <td>${ow.name}</td>
+      <td class="num">${ow.all.length}</td>
+      <td class="num">${ow.deeded}</td>
+      <td class="num">${ow.pspa}</td>
+      <td class="num">${ow.reserved}</td>
+      <td class="num" style="font-weight:500">${ow.sold}</td>
+      <td class="num">${ow.st}%</td>
+      <td style="font-size:11px;color:var(--muted)">${projBreakdown}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="admin-section">
+      <div class="admin-section-label">Commercial Team Overview</div>
+      <div class="admin-commercial-grid">${ownerCards}</div>
+    </div>
+    <div class="admin-section" style="margin-top:48px;">
+      <div class="admin-section-label">Detailed Breakdown</div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
+        <th>Owner</th><th class="num">Total</th><th class="num">Deeded</th>
+        <th class="num">PSPA</th><th class="num">Reserved</th>
+        <th class="num">Sold Total</th><th class="num">Sell-Through</th><th>Projects (sold/total)</th>
+      </tr></thead><tbody>${ownerProjRows}</tbody></table></div>
+    </div>
+    ${velRows ? `<div class="admin-section" style="margin-top:48px;">
+      <div class="admin-section-label">Reservations Last 12 Months by Owner</div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
+        <th>Owner</th><th class="num">Reservations</th>
+      </tr></thead><tbody>${velRows}</tbody></table></div>
+    </div>` : ''}
+  `;
+}
+
+/* ─── ADMIN PHASE 2 ─── */
   .admin-tl-wrap { margin-top: 8px; }
   .admin-tl-axis { position: relative; height: 28px; border-bottom: 1px solid var(--border); margin-bottom: 16px; margin-left: 220px; }
   .admin-tl-year { position: absolute; bottom: 4px; font-size: 11px; color: var(--muted); transform: translateX(-50%); }
@@ -1207,6 +1304,14 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
     .admin-price-bar-label { width: 100%; }
     .admin-price-bar-value { width: auto; text-align: left; }
   }
+
+
+  /* ─── VELOCITY CHART ─── */
+  .admin-velocity-chart { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding: 0 4px; border-bottom: 1px solid var(--border); }
+  .admin-velocity-col { display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; justify-content: flex-end; gap: 4px; }
+  .admin-velocity-bar { width: 100%; background: var(--dark); border-radius: 2px 2px 0 0; min-height: 2px; transition: height 0.3s; }
+  .admin-velocity-label { font-size: 9px; color: var(--muted); white-space: nowrap; margin-top: 6px; }
+  .admin-velocity-count { font-size: 10px; color: var(--dark); font-weight: 500; }
 
   /* ─── ADMIN PHASE 1 ─── */
   .admin-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--white); position: sticky; top: 0; z-index: 5; }
@@ -4527,7 +4632,7 @@ function initAdminDashboard() {
       <div class="admin-header">
         <div class="admin-header-inner">
           <div>
-            <div class="admin-eyebrow">Administrator · FY26</div>
+            <div class="admin-eyebrow">Administrator · FY26 · Data: 27 Jun 2026</div>
             <h1 class="admin-title">Portfolio Intelligence</h1>
           </div>
           <button class="admin-back-btn" id="admin-back">Back to Portfolio</button>
@@ -4537,6 +4642,7 @@ function initAdminDashboard() {
         <button class="admin-tab-btn active" data-tab="overview">Overview</button>
         <button class="admin-tab-btn" data-tab="units">Units</button>
         <button class="admin-tab-btn" data-tab="commercial">Commercial</button>
+        <button class="admin-tab-btn" data-tab="team">Team</button>
         <button class="admin-tab-btn" data-tab="timeline">Timeline</button>
         <button class="admin-tab-btn" data-tab="pricing">Pricing</button>
         <button class="admin-tab-btn" data-tab="quality">Data Quality</button>
@@ -4545,6 +4651,7 @@ function initAdminDashboard() {
         <div id="admin-tab-overview" class="admin-tab-content"></div>
         <div id="admin-tab-units" class="admin-tab-content" style="display:none"></div>
         <div id="admin-tab-commercial" class="admin-tab-content" style="display:none"></div>
+        <div id="admin-tab-team" class="admin-tab-content" style="display:none"></div>
         <div id="admin-tab-timeline" class="admin-tab-content" style="display:none"></div>
         <div id="admin-tab-pricing" class="admin-tab-content" style="display:none"></div>
         <div id="admin-tab-quality" class="admin-tab-content" style="display:none"></div>
@@ -4554,11 +4661,11 @@ function initAdminDashboard() {
 
   document.getElementById('admin-back')?.addEventListener('click', () => navigate('.'));
 
-  const rendered = { overview: false, units: false, commercial: false, timeline: false, pricing: false, quality: false };
+  const rendered = { overview: false, units: false, commercial: false, team: false, timeline: false, pricing: false, quality: false };
   function switchTab(tab) {
     document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     document.querySelectorAll('.admin-tab-content').forEach(d => { d.style.display = d.id === 'admin-tab-' + tab ? '' : 'none'; });
-    if (!rendered[tab]) { rendered[tab] = true; if (tab==='overview') renderAdminOverview(); else if (tab==='units') renderAdminUnits(); else if (tab==='commercial') renderAdminCommercial(); else if (tab==='timeline') renderAdminTimeline(); else if (tab==='pricing') renderAdminPricing(); else renderAdminQuality(); }
+    if (!rendered[tab]) { rendered[tab] = true; if (tab==='overview') renderAdminOverview(); else if (tab==='units') renderAdminUnits(); else if (tab==='commercial') renderAdminCommercial(); else if (tab==='team') renderAdminTeam(); else if (tab==='timeline') renderAdminTimeline(); else if (tab==='pricing') renderAdminPricing(); else renderAdminQuality(); }
   }
   document.querySelectorAll('.admin-tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
   switchTab('overview');
@@ -4647,54 +4754,113 @@ function renderAdminOverview() {
 function renderAdminUnits() {
   const el = document.getElementById('admin-tab-units');
   if (!el) return;
-  const projs  = [...new Set(ADMIN_UNITS.map(u=>u.p))].sort();
-  const stats  = ['Available','Reserved','PSPA','Deeded','Upon Request','Not for Sale'];
-  const typos  = [...new Set(ADMIN_UNITS.map(u=>u.t).filter(Boolean))].sort();
+  const projs = [...new Set(ADMIN_UNITS.map(u=>u.p))].sort();
+  const stats = ['Available','Reserved','PSPA','Deeded','Upon Request','Not for Sale'];
+  const typos = [...new Set(ADMIN_UNITS.map(u=>u.t).filter(Boolean))].sort();
   let filtered = [...ADMIN_UNITS];
   let page = 0;
+  let sortCol = null;
+  let sortDir = 'asc';
   const PAGE_SIZE = 50;
   const sCls = { 'Available':'s-available','PSPA':'s-pspa','Deeded':'s-deeded','Reserved':'s-reserved','Upon Request':'s-upon-request','Not for Sale':'s-not-for-sale' };
 
+  const COLS = [
+    { key:'p',  label:'Project',       type:'str'  },
+    { key:'u',  label:'Unit',          type:'str'  },
+    { key:'t',  label:'Type',          type:'str'  },
+    { key:'a',  label:'Area',          type:'num'  },
+    { key:'s',  label:'Status',        type:'str'  },
+    { key:'pi', label:'Initial Price', type:'num'  },
+    { key:'pc', label:'Current Price', type:'num'  },
+    { key:'disc',label:'Disc.',        type:'num'  },
+    { key:'cd', label:'Completion',    type:'date' },
+    { key:'co', label:'Owner',         type:'str'  },
+  ];
+
+  function sortVal(u, key, type) {
+    const v = u[key];
+    if (type === 'num')  return v || 0;
+    if (type === 'date') return v && /^\d{4}/.test(v) ? v : (v ? 'zzzz' : 'zzzz');
+    return (v || '').toLowerCase();
+  }
+
+  function applySort(arr) {
+    if (!sortCol) return arr;
+    const col = COLS.find(c=>c.key===sortCol);
+    if (!col) return arr;
+    return [...arr].sort((a,b) => {
+      const av = sortVal(a, col.key, col.type);
+      const bv = sortVal(b, col.key, col.type);
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }
+
   function applyFilters() {
-    const proj = document.getElementById('af-proj')?.value||'All';
-    const stat = document.getElementById('af-stat')?.value||'All';
-    const typo = document.getElementById('af-typo')?.value||'All';
-    const q    = (document.getElementById('af-search')?.value||'').toLowerCase().trim();
+    const proj  = document.getElementById('af-proj')?.value||'All';
+    const stat  = document.getElementById('af-stat')?.value||'All';
+    const typo  = document.getElementById('af-typo')?.value||'All';
+    const q     = (document.getElementById('af-search')?.value||'').toLowerCase().trim();
+    const cdFrom = document.getElementById('af-cd-from')?.value||'';
+    const cdTo   = document.getElementById('af-cd-to')?.value||'';
+    const rdFrom = document.getElementById('af-rd-from')?.value||'';
+    const rdTo   = document.getElementById('af-rd-to')?.value||'';
     filtered = ADMIN_UNITS.filter(u => {
       if (proj!=='All' && u.p!==proj) return false;
       if (stat!=='All' && u.s!==stat) return false;
       if (typo!=='All' && u.t!==typo) return false;
       if (q && !u.p.toLowerCase().includes(q) && !u.u.toLowerCase().includes(q) && !(u.t||'').toLowerCase().includes(q)) return false;
+      if (cdFrom && (!(u.cd) || !/^\d{4}/.test(u.cd) || u.cd.slice(0,10) < cdFrom)) return false;
+      if (cdTo   && (!(u.cd) || !/^\d{4}/.test(u.cd) || u.cd.slice(0,10) > cdTo))   return false;
+      if (rdFrom && (!(u.rd) || u.rd.slice(0,10) < rdFrom)) return false;
+      if (rdTo   && (!(u.rd) || u.rd.slice(0,10) > rdTo))   return false;
       return true;
     });
     page = 0; renderTable();
   }
 
+  function setSort(key) {
+    if (sortCol === key) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortCol = key; sortDir = 'asc'; }
+    renderTable();
+  }
+
   function renderTable() {
-    const total = filtered.length;
-    const slice = filtered.slice(page*PAGE_SIZE, (page+1)*PAGE_SIZE);
+    const sorted = applySort(filtered);
+    const total  = sorted.length;
+    const slice  = sorted.slice(page*PAGE_SIZE, (page+1)*PAGE_SIZE);
     const totalPages = Math.ceil(total/PAGE_SIZE);
+
+    function thSort(col) {
+      const isActive = sortCol === col.key;
+      const arrow = isActive ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+      const align = col.type === 'num' || col.type === 'date' ? ' class="num"' : '';
+      return `<th${align} data-sort="${col.key}" style="cursor:pointer;user-select:none;">${col.label}${arrow}</th>`;
+    }
+
     const rows = slice.map(u=>`<tr>
       <td>${u.p}</td><td>${u.u}</td><td>${u.t||'—'}</td>
       <td class="num">${u.a?Math.round(u.a)+' m²':'—'}</td>
       <td><span class="s-badge ${sCls[u.s]||''}">${u.s}</span></td>
       <td class="num">${fmtPriceExact(u.pi)}</td><td class="num">${fmtPriceExact(u.pc)}</td>
       <td class="num">${u.disc?u.disc.toFixed(1)+'%':'—'}</td>
+      <td class="num">${u.cd||'—'}</td>
       <td>${u.co||'—'}</td>
     </tr>`).join('');
+
     const pBtns = Array.from({length:Math.min(totalPages,20)},(_,i)=>`<button class="admin-page-btn${i===page?' active':''}" data-p="${i}">${i+1}</button>`).join('');
+
     document.getElementById('au-table-wrap').innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <span class="admin-filter-count">${total.toLocaleString()} units</span>
         <div class="admin-pagination">${pBtns}</div>
       </div>
       <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
-        <th>Project</th><th>Unit</th><th>Type</th><th class="num">Area</th>
-        <th>Status</th><th class="num">Initial Price</th><th class="num">Current Price</th>
-        <th class="num">Disc.</th><th>Owner</th>
+        ${COLS.map(thSort).join('')}
       </tr></thead><tbody>${rows}</tbody></table></div>
       <div class="admin-pagination" style="margin-top:12px;">${pBtns}</div>
     `;
+    el.querySelectorAll('[data-sort]').forEach(th => th.addEventListener('click', () => { setSort(th.dataset.sort); }));
     el.querySelectorAll('.admin-page-btn[data-p]').forEach(b=>b.addEventListener('click',()=>{page=+b.dataset.p;renderTable();}));
   }
 
@@ -4707,13 +4873,22 @@ function renderAdminUnits() {
         <select id="af-typo" class="admin-filter-select"><option>All</option>${typos.map(t=>`<option>${t}</option>`).join('')}</select>
         <input id="af-search" class="admin-filter-search" type="text" placeholder="Search project or unit...">
       </div>
+      <div class="admin-filter-bar" style="margin-top:-8px;">
+        <label style="font-size:11px;color:var(--muted);align-self:center;">Completion:</label>
+        <input id="af-cd-from" class="admin-filter-select" type="date" title="Completion from">
+        <input id="af-cd-to"   class="admin-filter-select" type="date" title="Completion to">
+        <label style="font-size:11px;color:var(--muted);align-self:center;margin-left:8px;">Reserved:</label>
+        <input id="af-rd-from" class="admin-filter-select" type="date" title="Reserved from">
+        <input id="af-rd-to"   class="admin-filter-select" type="date" title="Reserved to">
+      </div>
       <div id="au-table-wrap"></div>
     </div>
   `;
-  el.querySelectorAll('select').forEach(s=>s.addEventListener('change',applyFilters));
+  el.querySelectorAll('select, input').forEach(s=>s.addEventListener('change',applyFilters));
   el.querySelector('#af-search')?.addEventListener('input',applyFilters);
   applyFilters();
 }
+
 
 function renderAdminCommercial() {
   const el = document.getElementById('admin-tab-commercial');
@@ -4750,6 +4925,41 @@ function renderAdminCommercial() {
     <td class="num">${r.avail}</td><td class="num">${r.st}%</td><td class="num">${fmtPrice(r.avgPrice)}</td>
   </tr>`).join('');
 
+  // Reservation velocity — last 18 months
+  const byMonth = {};
+  ADMIN_UNITS.forEach(u => {
+    if (!u.rd || !/^\d{4}/.test(u.rd)) return;
+    const m = u.rd.slice(0,7);
+    if (!byMonth[m]) byMonth[m] = { m, count:0, byProj:{} };
+    byMonth[m].count++;
+    byMonth[m].byProj[u.p] = (byMonth[m].byProj[u.p]||0)+1;
+  });
+  const months = Object.values(byMonth).sort((a,b)=>a.m.localeCompare(b.m));
+  const last18 = months.slice(-18);
+  const maxCount = last18.length ? Math.max(...last18.map(m=>m.count)) : 1;
+  const velocityBars = last18.map(m => {
+    const w = (m.count/maxCount*100).toFixed(1);
+    const label = m.m.slice(0,4)===new Date().getFullYear().toString()
+      ? new Date(m.m+'-01').toLocaleDateString('en-GB',{month:'short'})
+      : new Date(m.m+'-01').toLocaleDateString('en-GB',{month:'short',year:'2-digit'});
+    return `<div class="admin-velocity-col" title="${m.m}: ${m.count} reservations">
+      <div class="admin-velocity-bar" style="height:${w}%"></div>
+      <div class="admin-velocity-label">${label}</div>
+      <div class="admin-velocity-count">${m.count}</div>
+    </div>`;
+  }).join('');
+
+  // Velocity by project (units with rd in last 12 months)
+  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-12);
+  const cutStr = cutoff.toISOString().slice(0,7);
+  const recentByProj = {};
+  ADMIN_UNITS.forEach(u => {
+    if (!u.rd || !/^\d{4}/.test(u.rd) || u.rd.slice(0,7) < cutStr) return;
+    recentByProj[u.p] = (recentByProj[u.p]||0)+1;
+  });
+  const velProjRows = Object.entries(recentByProj).sort((a,b)=>b[1]-a[1]).map(([p,n])=>`
+    <tr><td>${p}</td><td class="num">${n}</td></tr>`).join('');
+
   el.innerHTML = `
     <div class="admin-section">
       <div class="admin-section-label">Sell-Through Ranking by Project</div>
@@ -4762,103 +4972,11 @@ function renderAdminCommercial() {
         <th class="num">Available</th><th class="num">Sell-Through</th><th class="num">Avg. Price</th>
       </tr></thead><tbody>${typoRows}</tbody></table></div>
     </div>
-  `;
-}
-
-
-/* ─── ADMIN PHASE 2 ─── */
-
-function renderAdminTimeline() {
-  const el = document.getElementById('admin-tab-timeline');
-  if (!el) return;
-  const units = ADMIN_UNITS;
-
-  // Group by project, get completion date (all units in a project share one cd)
-  const byProj = {};
-  units.forEach(u => {
-    if (!byProj[u.p]) byProj[u.p] = { p:u.p, r:u.r, cds:[], all:[] };
-    byProj[u.p].all.push(u);
-    if (u.cd) byProj[u.p].cds.push(u.cd);
-  });
-
-  // Determine cd per project
-  const projList = Object.values(byProj).map(proj => {
-    const realDates = proj.cds.filter(c => /^\d{4}/.test(c));
-    const cd = realDates.length ? realDates[0] : (proj.cds[0] || 'TBD');
-    const cdSort = /^\d{4}/.test(cd) ? cd : (cd.startsWith('Conc') ? '2026-01' : '2099-01');
-    return { ...proj, cd, cdSort, year: /^\d{4}/.test(cd) ? cd.slice(0,4) : (cd.startsWith('Conc') ? 'Done' : 'TBD') };
-  }).sort((a,b) => a.cdSort.localeCompare(b.cdSort));
-
-  const realProjs = projList.filter(p => /^\d{4}/.test(p.cd));
-  const minDate = realProjs.length ? realProjs[0].cdSort.slice(0,7) : '2026-01';
-  const maxDate = realProjs.length ? realProjs[realProjs.length-1].cdSort.slice(0,7) : '2030-01';
-  const minMs = new Date(minDate+'-01').getTime();
-  const maxMs = new Date(maxDate+'-01').getTime() + 30*24*3600*1000;
-  const span  = maxMs - minMs || 1;
-
-  // Year markers
-  const years = [...new Set(realProjs.map(p=>p.year))].sort();
-  const yearMarkers = years.map(y => {
-    const ms = new Date(y+'-01-01').getTime();
-    const pct = Math.max(0, Math.min(100, (ms-minMs)/span*100));
-    return `<div class="admin-tl-year" style="left:${pct.toFixed(1)}%">${y}</div>`;
-  }).join('');
-
-  const rows = projList.map(proj => {
-    const total  = proj.all.length;
-    const sold   = proj.all.filter(u => u.s==='Deeded'||u.s==='PSPA'||u.s==='Reserved').length;
-    const avail  = proj.all.filter(u => u.s==='Available').length;
-    const st     = adminSellThrough(proj.all);
-    let barStyle = '';
-    let cdLabel  = proj.cd;
-    if (/^\d{4}/.test(proj.cd)) {
-      const ms  = new Date(proj.cd.slice(0,7)+'-01').getTime();
-      const pct = Math.max(2, Math.min(98, (ms-minMs)/span*100));
-      barStyle  = `left:${pct.toFixed(1)}%; transform:translateX(-50%);`;
-      cdLabel   = proj.cd.slice(0,7);
-    } else {
-      barStyle = 'right:0;';
-    }
-    const barColor = st > 70 ? 'var(--green)' : st > 40 ? '#8BB89A' : 'var(--sand)';
-    return `
-      <div class="admin-tl-row">
-        <div class="admin-tl-label">
-          <div class="admin-tl-name">${proj.p}</div>
-          <div class="admin-tl-meta">${proj.r} · ${total} units · ${st}% sold</div>
-        </div>
-        <div class="admin-tl-track">
-          <div class="admin-tl-dot" style="${barStyle} background:${barColor};">
-            <div class="admin-tl-dot-label">${cdLabel}</div>
-          </div>
-        </div>
-      </div>`;
-  }).join('');
-
-  // Year summary
-  const byYear = {};
-  projList.forEach(p => {
-    const y = p.year;
-    if (!byYear[y]) byYear[y] = {projs:0,units:0};
-    byYear[y].projs++; byYear[y].units += p.all.length;
-  });
-  const yearSummary = Object.entries(byYear).sort(([a],[b])=>a.localeCompare(b)).map(([y,v])=>`
-    <div class="admin-kpi" style="text-align:center;">
-      <div class="admin-kpi-label">${y}</div>
-      <div class="admin-kpi-value">${v.units}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px;">${v.projs} project${v.projs!==1?'s':''}</div>
-    </div>`).join('');
-
-  el.innerHTML = `
-    <div class="admin-section">
-      <div class="admin-section-label">Units by Completion Year</div>
-      <div class="admin-kpi-grid">${yearSummary}</div>
-    </div>
-    <div class="admin-section" style="margin-top:40px;">
-      <div class="admin-section-label">Project Delivery Timeline</div>
-      <div class="admin-tl-wrap">
-        <div class="admin-tl-axis">${yearMarkers}</div>
-        <div class="admin-tl-rows">${rows}</div>
-      </div>
+    <div class="admin-section" style="margin-top:48px;">
+      <div class="admin-section-label">Reservation Velocity · Last 18 Months</div>
+      <div class="admin-velocity-chart">${velocityBars}</div>
+      ${velProjRows ? `<div style="margin-top:24px;"><div class="admin-section-label" style="margin-bottom:12px;">Last 12 Months by Project</div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Project</th><th class="num">Reservations</th></tr></thead><tbody>${velProjRows}</tbody></table></div></div>` : ''}
     </div>
   `;
 }
@@ -4868,7 +4986,7 @@ function renderAdminPricing() {
   if (!el) return;
   const units = ADMIN_UNITS;
 
-  // Price per m² by project
+  // Price per m2 by project
   const byProj = {};
   units.forEach(u => {
     if (!byProj[u.p]) byProj[u.p] = { p:u.p, r:u.r, pm2:[], pi:[], pc:[] };
@@ -4890,52 +5008,75 @@ function renderAdminPricing() {
     const evoHtml = p.evo !== null
       ? `<span style="font-size:11px;color:${p.evo>0?'var(--green)':'#c0392b'};margin-left:8px;">${p.evo>0?'+':''}${p.evo.toFixed(1)}%</span>`
       : '';
-    return `
-      <div class="admin-price-bar-row">
-        <div class="admin-price-bar-label">${p.p}</div>
-        <div class="admin-price-bar-track">
-          <div class="admin-price-bar-fill" style="width:${w}%"></div>
-        </div>
-        <div class="admin-price-bar-value">€${Math.round(p.avg).toLocaleString('de-DE')}/m²${evoHtml}</div>
-      </div>`;
+    return `<div class="admin-price-bar-row">
+      <div class="admin-price-bar-label">${p.p}</div>
+      <div class="admin-price-bar-track"><div class="admin-price-bar-fill" style="width:${w}%"></div></div>
+      <div class="admin-price-bar-value">€${Math.round(p.avg).toLocaleString('de-DE')}/m²${evoHtml}</div>
+    </div>`;
   }).join('');
 
-  // Price per m² by key typology (>3 units)
+  // Price per m2 by typology
   const byTypo = {};
   units.forEach(u => {
     if (!u.t || !u.pc || !u.a || u.a<=0) return;
     if (!byTypo[u.t]) byTypo[u.t] = [];
     byTypo[u.t].push(u.pc/u.a);
   });
-  const typoRows = Object.entries(byTypo).filter(([,v])=>v.length>=3).map(([t,pm2s])=>{
+  const typoRows2 = Object.entries(byTypo).filter(([,v])=>v.length>=3).map(([t,pm2s])=>{
     const avg = pm2s.reduce((a,b)=>a+b,0)/pm2s.length;
-    const mn  = Math.min(...pm2s);
-    const mx  = Math.max(...pm2s);
-    return { t, avg, mn, mx, n:pm2s.length };
+    return { t, avg, mn:Math.min(...pm2s), mx:Math.max(...pm2s), n:pm2s.length };
   }).sort((a,b)=>b.avg-a.avg);
-  const maxTypoPm2 = typoRows.length ? typoRows[0].avg : 1;
-
-  const typoBars = typoRows.map(r => {
+  const maxTypoPm2 = typoRows2.length ? typoRows2[0].avg : 1;
+  const typoBars = typoRows2.map(r => {
     const w = (r.avg/maxTypoPm2*100).toFixed(1);
-    return `
-      <div class="admin-price-bar-row">
-        <div class="admin-price-bar-label">${r.t} <span style="font-size:10px;color:var(--muted)">(${r.n})</span></div>
-        <div class="admin-price-bar-track">
-          <div class="admin-price-bar-fill" style="width:${w}%; background:var(--green-mid);"></div>
-        </div>
-        <div class="admin-price-bar-value">€${Math.round(r.avg).toLocaleString('de-DE')}/m²<span style="font-size:11px;color:var(--muted)"> · €${Math.round(r.mn/1000)}K–€${Math.round(r.mx/1000)}K</span></div>
-      </div>`;
+    return `<div class="admin-price-bar-row">
+      <div class="admin-price-bar-label">${r.t} <span style="font-size:10px;color:var(--muted)">(${r.n})</span></div>
+      <div class="admin-price-bar-track"><div class="admin-price-bar-fill" style="width:${w}%;background:var(--green-mid);"></div></div>
+      <div class="admin-price-bar-value">€${Math.round(r.avg).toLocaleString('de-DE')}/m²<span style="font-size:11px;color:var(--muted)"> · €${Math.round(r.mn/1000)}K–€${Math.round(r.mx/1000)}K</span></div>
+    </div>`;
   }).join('');
 
   // Price evolution table
   const evoRows = projPm2.filter(p=>p.evo!==null).sort((a,b)=>b.evo-a.evo).map(p=>`
     <tr>
       <td>${p.p}</td>
-      <td class="num">${fmtPrice(p.avgPi)}</td>
-      <td class="num">${fmtPrice(p.avgPc)}</td>
+      <td class="num">${fmtPrice(p.avgPi)}</td><td class="num">${fmtPrice(p.avgPc)}</td>
       <td class="num" style="color:${p.evo>0?'var(--green)':'#c0392b'};font-weight:500">${p.evo>0?'+':''}${p.evo.toFixed(1)}%</td>
       <td class="num">${p.n} units</td>
     </tr>`).join('');
+
+  // Discount analysis
+  const discUnits = units.filter(u=>u.disc && u.disc>0);
+  const avgDisc   = discUnits.length ? discUnits.reduce((s,u)=>s+u.disc,0)/discUnits.length : 0;
+  const maxDisc   = discUnits.length ? Math.max(...discUnits.map(u=>u.disc)) : 0;
+
+  const discByProj = {};
+  discUnits.forEach(u=>{ if(!discByProj[u.p])discByProj[u.p]=[]; discByProj[u.p].push(u.disc); });
+  const maxDiscAvg = Object.values(discByProj).length ? Math.max(...Object.values(discByProj).map(ds=>ds.reduce((a,b)=>a+b,0)/ds.length)) : 1;
+  const discProjBars = Object.entries(discByProj).sort((a,b)=>{
+    const avgA=a[1].reduce((x,y)=>x+y,0)/a[1].length;
+    const avgB=b[1].reduce((x,y)=>x+y,0)/b[1].length;
+    return avgB-avgA;
+  }).map(([p,ds])=>{
+    const avg=ds.reduce((a,b)=>a+b,0)/ds.length;
+    const w=(avg/maxDiscAvg*100).toFixed(1);
+    const mx=Math.max(...ds);
+    return `<div class="admin-price-bar-row">
+      <div class="admin-price-bar-label">${p}</div>
+      <div class="admin-price-bar-track"><div class="admin-price-bar-fill" style="width:${w}%;background:#e67e22;"></div></div>
+      <div class="admin-price-bar-value">avg ${avg.toFixed(1)}%<span style="font-size:11px;color:var(--muted);margin-left:8px;">max ${mx.toFixed(1)}% · ${ds.length} units</span></div>
+    </div>`;
+  }).join('');
+
+  const discByTypo = {};
+  discUnits.forEach(u=>{ const t=u.t||'Other'; if(!discByTypo[t])discByTypo[t]=[]; discByTypo[t].push(u.disc); });
+  const discTypoRows = Object.entries(discByTypo).sort((a,b)=>{
+    return (b[1].reduce((x,y)=>x+y,0)/b[1].length)-(a[1].reduce((x,y)=>x+y,0)/a[1].length);
+  }).map(([t,ds])=>`<tr>
+    <td>${t}</td><td class="num">${ds.length}</td>
+    <td class="num">${(ds.reduce((a,b)=>a+b,0)/ds.length).toFixed(1)}%</td>
+    <td class="num">${Math.max(...ds).toFixed(1)}%</td>
+  </tr>`).join('');
 
   el.innerHTML = `
     <div class="admin-section">
@@ -4952,6 +5093,18 @@ function renderAdminPricing() {
         <th>Project</th><th class="num">Avg Initial</th><th class="num">Avg Current</th>
         <th class="num">Change</th><th class="num">Units</th>
       </tr></thead><tbody>${evoRows}</tbody></table></div>
+    </div>
+    <div class="admin-section" style="margin-top:48px;">
+      <div class="admin-section-label">Discount Analysis</div>
+      <div class="admin-kpi-grid" style="margin-bottom:32px;">
+        <div class="admin-kpi"><div class="admin-kpi-label">Discounted Units</div><div class="admin-kpi-value">${discUnits.length}</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Avg Discount</div><div class="admin-kpi-value">${avgDisc.toFixed(1)}%</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Max Discount</div><div class="admin-kpi-value" style="color:#e67e22">${maxDisc.toFixed(1)}%</div></div>
+      </div>
+      <div class="admin-price-bars" style="margin-bottom:32px;">${discProjBars}</div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
+        <th>Typology</th><th class="num">Discounted Units</th><th class="num">Avg Discount</th><th class="num">Max Discount</th>
+      </tr></thead><tbody>${discTypoRows}</tbody></table></div>
     </div>
   `;
 }
