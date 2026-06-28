@@ -68,9 +68,14 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
 
 /* ─── HERO ─── */
 .hero { position: relative; height: 100vh; min-height: 600px; overflow: hidden; }
-.hero-img { position: absolute; inset: 0; }
-.hero-img img { width: 100%; height: 100%; object-fit: cover; object-position: center 40%; }
+.hero-slides { position: absolute; inset: 0; }
+.hero-slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s ease; }
+.hero-slide.active { opacity: 1; }
+.hero-slide img { width: 100%; height: 100%; object-fit: cover; object-position: center 40%; }
 .hero-overlay { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.35) 70%, rgba(0,0,0,0.62) 100%); }
+.hero-dots { position: absolute; bottom: 32px; right: 60px; display: flex; gap: 6px; align-items: center; z-index: 2; }
+.hero-dot { width: 20px; height: 2px; background: rgba(255,255,255,0.35); cursor: pointer; transition: background 0.3s, width 0.3s; border-radius: 2px; }
+.hero-dot.active { background: rgba(255,255,255,0.9); width: 32px; }
 .hero-content { position: absolute; bottom: 0; left: 0; right: 0; padding: 0 60px 60px; color: var(--white); }
 .hero-eyebrow { font-size: 11px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin-bottom: 20px; }
 .hero-title { font-family: 'Cormorant Garamond', Georgia, serif; font-size: clamp(56px, 7vw, 96px); font-weight: 300; line-height: 0.95; letter-spacing: -0.02em; margin-bottom: 24px; max-width: 700px; }
@@ -391,6 +396,7 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   /* Hero */
   .hero { height: 100svh; min-height: 480px; }
   .hero-content { padding: 0 24px 44px; }
+  .hero-dots { right: 24px; bottom: 24px; }
   .hero-title { font-size: 44px; line-height: 1; }
   .hero-subtitle { font-size: 14px; margin-bottom: 28px; }
 
@@ -1210,10 +1216,23 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   <!-- ─── HOME VIEW ─── -->
   <div id="view-home">
 
-    <section class="hero">
-      <div class="hero-img">
-        <img src="https://drive.google.com/thumbnail?id=1bRAw4yAUEPao6L6EeTrYP0xR5wCILE8G&sz=w1600" alt="FROM Portfolio" loading="eager"
-             onerror="this.parentElement.style.background='#2C4A2E'" />
+    <section class="hero" id="home-hero">
+      <div class="hero-slides" id="hero-slides">
+        <div class="hero-slide active">
+          <img src="hero/from-golf-court.avif" alt="Palmares · Lagos" loading="eager" onerror="this.parentElement.style.background='#2C4A2E'" />
+        </div>
+        <div class="hero-slide">
+          <img src="hero/vilamoura-2.avif" alt="Vilamoura · Algarve" loading="lazy" onerror="this.parentElement.style.background='#2C4A2E'" />
+        </div>
+        <div class="hero-slide">
+          <img src="hero/palmares-2.avif" alt="Palmares · Lagos" loading="lazy" onerror="this.parentElement.style.background='#2C4A2E'" />
+        </div>
+        <div class="hero-slide">
+          <img src="hero/2073_VilamouraWorld_04_Marina_AerialView.avif" alt="Vilamoura Marina · Algarve" loading="lazy" onerror="this.parentElement.style.background='#2C4A2E'" />
+        </div>
+        <div class="hero-slide">
+          <img src="hero/sutaya-2.avif" alt="Sutaya · Quinta do Lago" loading="lazy" onerror="this.parentElement.style.background='#2C4A2E'" />
+        </div>
       </div>
       <div class="hero-overlay"></div>
       <div class="hero-content">
@@ -1221,6 +1240,13 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
         <h1 class="hero-title">Curating Projects<br><em>&amp; Places.</em></h1>
         <p class="hero-subtitle">A strategic overview of the FROM residential portfolio — homes, places and lifestyles across Portugal.</p>
         <a href="?explore" class="hero-cta">Explore portfolio &rarr;</a>
+      </div>
+      <div class="hero-dots" id="hero-dots">
+        <div class="hero-dot active" data-index="0"></div>
+        <div class="hero-dot" data-index="1"></div>
+        <div class="hero-dot" data-index="2"></div>
+        <div class="hero-dot" data-index="3"></div>
+        <div class="hero-dot" data-index="4"></div>
       </div>
     </section>
 
@@ -3378,6 +3404,28 @@ function initHomepage() {
   buildKpiBar();
   buildEditorialStats();
   buildFeaturedGrid();
+  initHeroSlideshow();
+}
+
+function initHeroSlideshow() {
+  const slides = document.querySelectorAll('.hero-slide');
+  const dots   = document.querySelectorAll('.hero-dot');
+  if (slides.length < 2) return;
+  let current = 0;
+  let timer;
+  function goTo(i) {
+    slides[current].classList.remove('active');
+    dots[current]?.classList.remove('active');
+    current = (i + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    dots[current]?.classList.add('active');
+  }
+  function startTimer() {
+    clearInterval(timer);
+    timer = setInterval(() => goTo(current + 1), 5000);
+  }
+  dots.forEach((d, i) => d.addEventListener('click', () => { goTo(i); startTimer(); }));
+  startTimer();
 }
 
 function buildKpiBar() {
