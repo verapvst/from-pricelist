@@ -1181,102 +1181,6 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   
 
   
-function renderAdminTeam() {
-  const el = document.getElementById('admin-tab-team');
-  if (!el) return;
-
-  const byOwner = {};
-  ADMIN_UNITS.forEach(u => {
-    const o = u.co || 'Unassigned';
-    if (!byOwner[o]) byOwner[o] = { name:o, all:[], projs:new Set() };
-    byOwner[o].all.push(u);
-    byOwner[o].projs.add(u.p);
-  });
-
-  const owners = Object.values(byOwner).map(ow => {
-    const all      = ow.all;
-    const deeded   = all.filter(u=>u.s==='Deeded').length;
-    const pspa     = all.filter(u=>u.s==='PSPA').length;
-    const reserved = all.filter(u=>u.s==='Reserved').length;
-    const avail    = all.filter(u=>u.s==='Available').length;
-    const sold     = deeded + pspa + reserved;
-    const sellable = adminSellableUnits(all).length;
-    const st       = sellable ? Math.round(sold/sellable*100) : 0;
-    const avgDisc  = (() => { const ds=all.filter(u=>u.disc&&u.disc>0).map(u=>u.disc); return ds.length?ds.reduce((a,b)=>a+b,0)/ds.length:0; })();
-    const pricedSold = all.filter(u=>(u.s==='Deeded'||u.s==='PSPA')&&u.ps);
-    const totalRevenue = pricedSold.reduce((s,u)=>s+(u.ps||u.pc||0),0);
-    return { ...ow, deeded, pspa, reserved, avail, sold, st, avgDisc, totalRevenue, projCount:ow.projs.size };
-  }).sort((a,b)=>b.sold-a.sold);
-
-  const ownerCards = owners.map(ow=>`
-    <div class="admin-commercial-card">
-      <div class="admin-comm-name">${ow.name}</div>
-      <div class="admin-comm-region">${ow.projCount} project${ow.projCount!==1?'s':''} · ${ow.all.length} units</div>
-      <div class="admin-st-pct">${ow.st}%</div>
-      <div class="admin-st-bar-wrap"><div class="admin-st-bar" style="width:${ow.st}%"></div></div>
-      <div class="admin-comm-stats">
-        <div class="admin-comm-stat"><div class="admin-comm-stat-label">Deeded</div><div class="admin-comm-stat-value">${ow.deeded}</div></div>
-        <div class="admin-comm-stat"><div class="admin-comm-stat-label">PSPA</div><div class="admin-comm-stat-value">${ow.pspa}</div></div>
-        <div class="admin-comm-stat"><div class="admin-comm-stat-label">Reserved</div><div class="admin-comm-stat-value">${ow.reserved}</div></div>
-        <div class="admin-comm-stat"><div class="admin-comm-stat-label">Available</div><div class="admin-comm-stat-value">${ow.avail}</div></div>
-        ${ow.avgDisc>0?`<div class="admin-comm-stat"><div class="admin-comm-stat-label">Avg Disc.</div><div class="admin-comm-stat-value" style="color:#e67e22">${ow.avgDisc.toFixed(1)}%</div></div>`:''}
-      </div>
-    </div>`).join('');
-
-  // Per-owner velocity (reservations last 12 months)
-  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-12);
-  const cutStr  = cutoff.toISOString().slice(0,7);
-  const recentVel = {};
-  ADMIN_UNITS.forEach(u => {
-    if (!u.rd || !/^\d{4}/.test(u.rd) || u.rd.slice(0,7) < cutStr) return;
-    const o = u.co || 'Unassigned';
-    if (!recentVel[o]) recentVel[o] = 0;
-    recentVel[o]++;
-  });
-  const velRows = Object.entries(recentVel).sort((a,b)=>b[1]-a[1]).map(([o,n])=>`
-    <tr><td>${o}</td><td class="num">${n}</td></tr>`).join('');
-
-  // Project breakdown per owner
-  const ownerProjRows = owners.map(ow => {
-    const projBreakdown = [...ow.projs].map(p => {
-      const pUnits = ow.all.filter(u=>u.p===p);
-      const pSold  = adminSoldUnits(pUnits).length;
-      return `${p} (${pSold}/${pUnits.length})`;
-    }).join(' · ');
-    return `<tr>
-      <td>${ow.name}</td>
-      <td class="num">${ow.all.length}</td>
-      <td class="num">${ow.deeded}</td>
-      <td class="num">${ow.pspa}</td>
-      <td class="num">${ow.reserved}</td>
-      <td class="num" style="font-weight:500">${ow.sold}</td>
-      <td class="num">${ow.st}%</td>
-      <td style="font-size:11px;color:var(--muted)">${projBreakdown}</td>
-    </tr>`;
-  }).join('');
-
-  el.innerHTML = `
-    <div class="admin-section">
-      <div class="admin-section-label">Commercial Team Overview</div>
-      <div class="admin-commercial-grid">${ownerCards}</div>
-    </div>
-    <div class="admin-section" style="margin-top:48px;">
-      <div class="admin-section-label">Detailed Breakdown</div>
-      <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
-        <th>Owner</th><th class="num">Total</th><th class="num">Deeded</th>
-        <th class="num">PSPA</th><th class="num">Reserved</th>
-        <th class="num">Sold Total</th><th class="num">Sell-Through</th><th>Projects (sold/total)</th>
-      </tr></thead><tbody>${ownerProjRows}</tbody></table></div>
-    </div>
-    ${velRows ? `<div class="admin-section" style="margin-top:48px;">
-      <div class="admin-section-label">Reservations Last 12 Months by Owner</div>
-      <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
-        <th>Owner</th><th class="num">Reservations</th>
-      </tr></thead><tbody>${velRows}</tbody></table></div>
-    </div>` : ''}
-  `;
-}
-
 /* ─── ADMIN PHASE 2 ─── */
   .admin-tl-wrap { margin-top: 8px; }
   .admin-tl-axis { position: relative; height: 28px; border-bottom: 1px solid var(--border); margin-bottom: 16px; margin-left: 220px; }
@@ -1312,6 +1216,29 @@ function renderAdminTeam() {
   .admin-velocity-bar { width: 100%; background: var(--dark); border-radius: 2px 2px 0 0; min-height: 2px; transition: height 0.3s; }
   .admin-velocity-label { font-size: 9px; color: var(--muted); white-space: nowrap; margin-top: 6px; }
   .admin-velocity-count { font-size: 10px; color: var(--dark); font-weight: 500; }
+
+
+  /* ─── TEAM + TIMELINE V2 ─── */
+  .admin-team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .admin-team-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 28px; }
+  .admin-vel-wrap { display: flex; align-items: flex-end; gap: 3px; height: 32px; }
+  .admin-vel-col { flex: 1; display: flex; align-items: flex-end; }
+  .admin-vel-bar { width: 100%; min-height: 2px; border-radius: 1px 1px 0 0; }
+  .admin-tl2-wrap { overflow-x: auto; }
+  .admin-tl-axis2 { position: relative; height: 24px; border-bottom: 1px solid var(--border); margin-left: 240px; margin-bottom: 12px; min-width: 600px; }
+  .admin-tl-rows2 { display: flex; flex-direction: column; gap: 16px; min-width: 840px; }
+  .admin-tl-row2 { display: flex; align-items: flex-start; gap: 0; }
+  .admin-tl-label2 { width: 240px; flex-shrink: 0; padding-top: 4px; }
+  .admin-tl-name { font-size: 13px; font-weight: 500; color: var(--dark); }
+  .admin-tl-near { font-size: 11px; color: var(--green); font-weight: 400; }
+  .admin-tl-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .admin-tl-track2 { flex: 1; position: relative; height: 44px; }
+  .admin-tl-axis-line { position: absolute; top: 20px; left: 0; right: 0; height: 1px; background: var(--border); }
+  .admin-tl-marker { position: absolute; top: 0; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+  .admin-tl-marker-date { font-size: 10px; color: var(--muted); white-space: nowrap; margin-bottom: 3px; }
+  .admin-tl-marker-pin { width: 1px; height: 8px; background: var(--dark); }
+  .admin-tl-stacked { display: flex; width: 120px; height: 12px; border-radius: 2px; overflow: hidden; margin-top: 1px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .admin-tl-stacked div { flex-shrink: 0; }
 
   /* ─── ADMIN PHASE 1 ─── */
   .admin-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); background: var(--white); position: sticky; top: 0; z-index: 5; }
@@ -5116,13 +5043,13 @@ function renderAdminQuality() {
   const total = units.length;
 
   const fields = [
-    { label: 'Current Price',     key: 'pc',  check: u => !!u.pc  },
-    { label: 'Initial Price',     key: 'pi',  check: u => !!u.pi  },
-    { label: 'Total Area',        key: 'a',   check: u => !!u.a && u.a > 0 },
-    { label: 'Completion Date',   key: 'cd',  check: u => !!u.cd  },
-    { label: 'Typology',          key: 't',   check: u => !!u.t   },
-    { label: 'Commercial Owner',  key: 'co',  check: u => !!u.co  },
-    { label: 'Reservation Date',  key: 'rd',  check: u => !!u.rd || u.s==='Available' || u.s==='Not for Sale' || u.s==='Upon Request' },
+    { label: 'Current Price',     check: u => !!u.pc },
+    { label: 'Initial Price',     check: u => !!u.pi },
+    { label: 'Total Area',        check: u => !!u.a && u.a > 0 },
+    { label: 'Completion Date',   check: u => !!u.cd },
+    { label: 'Typology',          check: u => !!u.t },
+    { label: 'Commercial Owner',  check: u => !!u.co },
+    { label: 'Reservation Date',  check: u => !!u.rd || u.s==='Available' || u.s==='Not for Sale' || u.s==='Upon Request' },
   ];
 
   const fieldRows = fields.map(f => {
@@ -5130,58 +5057,44 @@ function renderAdminQuality() {
     const missing = total - present;
     const pct = Math.round(present/total*100);
     const color = pct>=95?'var(--green)':pct>=80?'#f0a500':'#c0392b';
-    return `
-      <tr>
-        <td>${f.label}</td>
-        <td class="num">${present.toLocaleString()}</td>
-        <td class="num" style="color:#c0392b">${missing||'—'}</td>
-        <td class="num">
-          <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
-            <div style="width:80px;height:4px;background:var(--beige);border-radius:2px;overflow:hidden;">
-              <div style="width:${pct}%;height:100%;background:${color};border-radius:2px;"></div>
-            </div>
-            <span style="color:${color};font-weight:500;min-width:32px;">${pct}%</span>
+    return `<tr>
+      <td>${f.label}</td>
+      <td class="num">${present.toLocaleString()}</td>
+      <td class="num" style="color:${missing?'#c0392b':'var(--muted)'}">${missing||'—'}</td>
+      <td class="num">
+        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
+          <div style="width:80px;height:4px;background:var(--beige);border-radius:2px;overflow:hidden;">
+            <div style="width:${pct}%;height:100%;background:${color};border-radius:2px;"></div>
           </div>
-        </td>
-      </tr>`;
+          <span style="color:${color};font-weight:500;min-width:32px;">${pct}%</span>
+        </div>
+      </td>
+    </tr>`;
   }).join('');
 
-  // Per-project completeness
   const byProj = {};
-  units.forEach(u => {
-    if (!byProj[u.p]) byProj[u.p] = [];
-    byProj[u.p].push(u);
-  });
-
-  const projRows = Object.entries(byProj).map(([p, us]) => {
-    const n = us.length;
-    const noPrice = us.filter(u => !u.pc).length;
-    const noArea  = us.filter(u => !u.a || u.a<=0).length;
-    const noCd    = us.filter(u => !u.cd).length;
-    const noTypo  = us.filter(u => !u.t).length;
-    const noOwner = us.filter(u => !u.co).length;
-    const issues  = noPrice + noArea + noCd + noTypo + noOwner;
-    const pct     = Math.round((1 - issues/(n*5))*100);
-    const color   = pct>=95?'var(--green)':pct>=80?'#f0a500':'#c0392b';
-    return { p, n, noPrice, noArea, noCd, noTypo, noOwner, issues, pct, color };
+  units.forEach(u => { if (!byProj[u.p]) byProj[u.p]=[]; byProj[u.p].push(u); });
+  const projRows = Object.entries(byProj).map(([p,us]) => {
+    const n=us.length, noPrice=us.filter(u=>!u.pc).length, noArea=us.filter(u=>!u.a||u.a<=0).length,
+          noCd=us.filter(u=>!u.cd).length, noTypo=us.filter(u=>!u.t).length, noOwner=us.filter(u=>!u.co).length;
+    const issues=noPrice+noArea+noCd+noTypo+noOwner;
+    const pct=Math.round((1-issues/(n*5))*100);
+    const color=pct>=95?'var(--green)':pct>=80?'#f0a500':'#c0392b';
+    return {p,n,noPrice,noArea,noCd,noTypo,noOwner,pct,color};
   }).sort((a,b)=>a.pct-b.pct);
 
-  const projQRows = projRows.map(r=>`
-    <tr>
-      <td>${r.p}</td>
-      <td class="num">${r.n}</td>
-      <td class="num" style="color:${r.noPrice?'#c0392b':'var(--muted)'}">${r.noPrice||'—'}</td>
-      <td class="num" style="color:${r.noArea?'#c0392b':'var(--muted)'}">${r.noArea||'—'}</td>
-      <td class="num" style="color:${r.noCd?'#f0a500':'var(--muted)'}">${r.noCd||'—'}</td>
-      <td class="num" style="color:${r.noTypo?'#c0392b':'var(--muted)'}">${r.noTypo||'—'}</td>
-      <td class="num" style="color:${r.noOwner?'#f0a500':'var(--muted)'}">${r.noOwner||'—'}</td>
-      <td class="num" style="color:${r.color};font-weight:500">${r.pct}%</td>
-    </tr>`).join('');
+  const projQRows = projRows.map(r=>`<tr>
+    <td>${r.p}</td><td class="num">${r.n}</td>
+    <td class="num" style="color:${r.noPrice?'#c0392b':'var(--muted)'}">${r.noPrice||'—'}</td>
+    <td class="num" style="color:${r.noArea?'#c0392b':'var(--muted)'}">${r.noArea||'—'}</td>
+    <td class="num" style="color:${r.noCd?'#f0a500':'var(--muted)'}">${r.noCd||'—'}</td>
+    <td class="num" style="color:${r.noTypo?'#c0392b':'var(--muted)'}">${r.noTypo||'—'}</td>
+    <td class="num" style="color:${r.noOwner?'#f0a500':'var(--muted)'}">${r.noOwner||'—'}</td>
+    <td class="num" style="color:${r.color};font-weight:500">${r.pct}%</td>
+  </tr>`).join('');
 
-  // Overall score
-  const allIssues = projRows.reduce((s,r)=>s+r.issues,0);
-  const maxIssues = total * 5;
-  const overallPct = Math.round((1-allIssues/maxIssues)*100);
+  const overallIssues = projRows.reduce((s,r)=>s+(r.noPrice+r.noArea+r.noCd+r.noTypo+r.noOwner),0);
+  const overallPct = Math.round((1-overallIssues/(total*5))*100);
   const overallColor = overallPct>=95?'var(--green)':overallPct>=80?'#f0a500':'#c0392b';
 
   el.innerHTML = `
@@ -5190,10 +5103,10 @@ function renderAdminQuality() {
       <div class="admin-kpi-grid">
         <div class="admin-kpi"><div class="admin-kpi-label">Total Units</div><div class="admin-kpi-value">${total.toLocaleString()}</div></div>
         <div class="admin-kpi"><div class="admin-kpi-label">Overall Score</div><div class="admin-kpi-value" style="color:${overallColor}">${overallPct}%</div></div>
-        <div class="admin-kpi"><div class="admin-kpi-label">Missing Prices</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.pc).length>0?'#c0392b':'var(--dark)'}">${units.filter(u=>!u.pc).length}</div></div>
-        <div class="admin-kpi"><div class="admin-kpi-label">Missing Areas</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.a||u.a<=0).length>0?'#f0a500':'var(--dark)'}">${units.filter(u=>!u.a||u.a<=0).length}</div></div>
-        <div class="admin-kpi"><div class="admin-kpi-label">Missing Completion Dates</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.cd).length>0?'#f0a500':'var(--dark)'}">${units.filter(u=>!u.cd).length}</div></div>
-        <div class="admin-kpi"><div class="admin-kpi-label">Missing Typology</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.t).length>0?'#c0392b':'var(--dark)'}">${units.filter(u=>!u.t).length}</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Missing Prices</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.pc).length?'#c0392b':'var(--dark)'}">${units.filter(u=>!u.pc).length}</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Missing Areas</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.a||u.a<=0).length?'#f0a500':'var(--dark)'}">${units.filter(u=>!u.a||u.a<=0).length}</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Missing Compl. Date</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.cd).length?'#f0a500':'var(--dark)'}">${units.filter(u=>!u.cd).length}</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Missing Owner</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.co).length?'#f0a500':'var(--dark)'}">${units.filter(u=>!u.co).length}</div></div>
       </div>
     </div>
     <div class="admin-section" style="margin-top:40px;">
@@ -5203,13 +5116,194 @@ function renderAdminQuality() {
       </tr></thead><tbody>${fieldRows}</tbody></table></div>
     </div>
     <div class="admin-section" style="margin-top:48px;">
-      <div class="admin-section-label">Completeness by Project <span style="font-size:11px;color:var(--muted);font-weight:400">(worst first)</span></div>
+      <div class="admin-section-label">By Project <span style="font-size:11px;color:var(--muted);font-weight:400">(worst first)</span></div>
       <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
         <th>Project</th><th class="num">Units</th><th class="num">No Price</th>
         <th class="num">No Area</th><th class="num">No Compl. Date</th>
         <th class="num">No Typology</th><th class="num">No Owner</th><th class="num">Score</th>
       </tr></thead><tbody>${projQRows}</tbody></table></div>
     </div>
+  `;
+}
+
+/* ─── ADMIN TEAM ─── */
+function renderAdminTeam() {
+  const el = document.getElementById('admin-tab-team');
+  if (!el) return;
+
+  const byOwner = {};
+  ADMIN_UNITS.forEach(u => {
+    const o = u.co || 'Unassigned';
+    if (!byOwner[o]) byOwner[o] = { name:o, all:[], projs:new Set() };
+    byOwner[o].all.push(u);
+    byOwner[o].projs.add(u.p);
+  });
+
+  const owners = Object.values(byOwner).map(ow => {
+    const all=ow.all, deeded=all.filter(u=>u.s==='Deeded').length, pspa=all.filter(u=>u.s==='PSPA').length,
+          reserved=all.filter(u=>u.s==='Reserved').length, avail=all.filter(u=>u.s==='Available').length;
+    const sold=deeded+pspa+reserved, sellable=adminSellableUnits(all).length;
+    const st=sellable?Math.round(sold/sellable*100):0;
+    const discUnits=all.filter(u=>u.disc&&u.disc>0);
+    const avgDisc=discUnits.length?discUnits.reduce((s,u)=>s+u.disc,0)/discUnits.length:0;
+    const velMap={};
+    all.forEach(u=>{ if(u.rd&&/^\d{4}/.test(u.rd)) velMap[u.rd.slice(0,7)]=(velMap[u.rd.slice(0,7)]||0)+1; });
+    return {...ow,deeded,pspa,reserved,avail,sold,sellable,st,avgDisc,velMap,projCount:ow.projs.size};
+  }).sort((a,b)=>{ if(a.name==='Unassigned')return 1; if(b.name==='Unassigned')return -1; return b.sold-a.sold; });
+
+  const allMonths=[];
+  for(let i=17;i>=0;i--){ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-i); allMonths.push(d.toISOString().slice(0,7)); }
+
+  function miniVelBar(velMap) {
+    const counts=allMonths.map(m=>velMap[m]||0), maxC=Math.max(...counts,1);
+    return counts.map((c,i)=>`<div class="admin-vel-col" title="${allMonths[i]}: ${c}"><div class="admin-vel-bar" style="height:${Math.round(c/maxC*28)}px;background:${i>=15?'var(--green)':'var(--dark)'}"></div></div>`).join('');
+  }
+
+  const ownerCards=owners.map(ow=>{
+    const stColor=ow.st>60?'var(--green)':ow.st>35?'var(--dark)':'#c0392b';
+    const velHtml=Object.keys(ow.velMap).length?`<div class="admin-vel-wrap">${miniVelBar(ow.velMap)}</div><div style="font-size:10px;color:var(--muted);margin-top:4px;">Reservations · 18 months</div>`:'';
+    return `<div class="admin-team-card">
+      <div class="admin-comm-name">${ow.name}</div>
+      <div class="admin-comm-region">${ow.projCount} project${ow.projCount!==1?'s':''} · ${ow.all.length} units managed</div>
+      <div style="display:flex;gap:24px;align-items:flex-end;margin:20px 0 8px;">
+        <div><div class="admin-kpi-label">Sell-Through</div><div style="font-size:36px;font-family:'Cormorant Garamond',serif;color:${stColor};line-height:1">${ow.st}%</div></div>
+        <div style="flex:1;padding-bottom:4px;">
+          <div class="admin-health-bar-wrap" style="margin-bottom:6px;">
+            <div class="admin-health-bar-deeded"  style="width:${ow.sellable?Math.round(ow.deeded/ow.sellable*100):0}%"></div>
+            <div class="admin-health-bar-pspa"     style="width:${ow.sellable?Math.round(ow.pspa/ow.sellable*100):0}%"></div>
+            <div class="admin-health-bar-reserved" style="width:${ow.sellable?Math.round(ow.reserved/ow.sellable*100):0}%"></div>
+          </div>
+          <div style="display:flex;gap:10px;font-size:10px;color:var(--muted);">
+            <span>Deeded ${ow.deeded}</span><span>PSPA ${ow.pspa}</span><span>Reserved ${ow.reserved}</span><span>Avail ${ow.avail}</span>
+          </div>
+        </div>
+      </div>
+      ${ow.reserved>0?`<div style="font-size:12px;color:#e67e22;margin-bottom:12px;">${ow.reserved} reserved unit${ow.reserved!==1?'s':''} pending PSPA conversion</div>`:''}
+      ${ow.avgDisc>0?`<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Avg. discount granted: ${ow.avgDisc.toFixed(1)}%</div>`:''}
+      ${velHtml}
+    </div>`;
+  }).join('');
+
+  const ownerProjRows=owners.filter(ow=>ow.name!=='Unassigned').map(ow=>[...ow.projs].sort().map(p=>{
+    const us=ow.all.filter(u=>u.p===p);
+    return `<tr><td style="font-weight:500">${ow.name}</td><td>${p}</td><td class="num">${us.length}</td>
+      <td class="num">${us.filter(u=>u.s==='Deeded').length}</td><td class="num">${us.filter(u=>u.s==='PSPA').length}</td>
+      <td class="num">${us.filter(u=>u.s==='Reserved').length}</td><td class="num">${us.filter(u=>u.s==='Available').length}</td>
+      <td class="num">${adminSellThrough(us)}%</td></tr>`;
+  }).join('')).join('');
+
+  const pipelineUnits=ADMIN_UNITS.filter(u=>u.s==='Reserved'&&u.co);
+  const pipelineRows=pipelineUnits.map(u=>`<tr><td>${u.co}</td><td>${u.p}</td><td>${u.u}</td><td>${u.t||'—'}</td><td class="num">${fmtPrice(u.pc)}</td><td>${u.rd||'—'}</td></tr>`).join('');
+
+  el.innerHTML=`
+    <div class="admin-section"><div class="admin-section-label">Commercial Team</div><div class="admin-team-grid">${ownerCards}</div></div>
+    <div class="admin-section" style="margin-top:48px;">
+      <div class="admin-section-label">Portfolio by Owner & Project</div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
+        <th>Owner</th><th>Project</th><th class="num">Total</th><th class="num">Deeded</th>
+        <th class="num">PSPA</th><th class="num">Reserved</th><th class="num">Available</th><th class="num">Sell-Through</th>
+      </tr></thead><tbody>${ownerProjRows}</tbody></table></div>
+    </div>
+    ${pipelineRows?`<div class="admin-section" style="margin-top:48px;">
+      <div class="admin-section-label">Pipeline — Reserved Pending Conversion <span style="font-size:11px;color:var(--muted);font-weight:400">(${pipelineUnits.length} units)</span></div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
+        <th>Owner</th><th>Project</th><th>Unit</th><th>Type</th><th class="num">Price</th><th>Reserved Date</th>
+      </tr></thead><tbody>${pipelineRows}</tbody></table></div>
+    </div>`:''}
+  `;
+}
+
+/* ─── ADMIN TIMELINE ─── */
+function renderAdminTimeline() {
+  const el = document.getElementById('admin-tab-timeline');
+  if (!el) return;
+
+  const byProj={};
+  ADMIN_UNITS.forEach(u=>{ if(!byProj[u.p])byProj[u.p]={p:u.p,r:u.r,all:[]}; byProj[u.p].all.push(u); });
+
+  const projList=Object.values(byProj).map(proj=>{
+    const real=proj.all.map(u=>u.cd).filter(c=>c&&/^\d{4}/.test(c));
+    const cd=real.length?real[0]:'TBD';
+    const year=/^\d{4}/.test(cd)?cd.slice(0,4):'TBD';
+    return {...proj,cd,year,cdSort:/^\d{4}/.test(cd)?cd:'9999'};
+  }).sort((a,b)=>a.cdSort.localeCompare(b.cdSort));
+
+  const realProjs=projList.filter(p=>/^\d{4}/.test(p.cd));
+  const tbdProjs =projList.filter(p=>!/^\d{4}/.test(p.cd));
+
+  const byYear={};
+  projList.forEach(p=>{ const y=p.year; if(!byYear[y])byYear[y]={projs:0,units:0,sold:0}; byYear[y].projs++; byYear[y].units+=p.all.length; byYear[y].sold+=adminSoldUnits(p.all).length; });
+  const yearKpis=Object.entries(byYear).sort(([a],[b])=>a.localeCompare(b)).map(([y,v])=>`
+    <div class="admin-kpi">
+      <div class="admin-kpi-label">${y}</div>
+      <div class="admin-kpi-value">${v.units}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">${v.projs} project${v.projs!==1?'s':''} · ${Math.round(v.sold/v.units*100)}% sold</div>
+    </div>`).join('');
+
+  const minMs=new Date('2026-01-01').getTime(), maxMs=new Date('2030-01-01').getTime(), span=maxMs-minMs;
+  const yearMarkers=['2026','2027','2028','2029','2030'].map(y=>{
+    const pct=((new Date(y+'-01-01').getTime()-minMs)/span*100).toFixed(1);
+    return `<div class="admin-tl-year" style="left:${pct}%">${y}</div>`;
+  }).join('');
+
+  const projRows=realProjs.map(proj=>{
+    const all=proj.all, sellable=adminSellableUnits(all);
+    const deeded=all.filter(u=>u.s==='Deeded').length, pspa=all.filter(u=>u.s==='PSPA').length;
+    const reserved=all.filter(u=>u.s==='Reserved').length, avail=all.filter(u=>u.s==='Available').length;
+    const ur=all.filter(u=>u.s==='Upon Request').length, st=adminSellThrough(all);
+    const n=sellable.length||all.length;
+    const dW=Math.round(deeded/n*100), pW=Math.round(pspa/n*100), rW=Math.round(reserved/n*100), aW=Math.round(avail/n*100), uW=Math.round(ur/n*100);
+    const ms=new Date(proj.cd.slice(0,7)+'-01').getTime();
+    const pct=Math.max(2,Math.min(96,(ms-minMs)/span*100)).toFixed(1);
+    const nearTerm=proj.cd<'2028-01-01';
+    return `<div class="admin-tl-row2">
+      <div class="admin-tl-label2">
+        <div class="admin-tl-name">${proj.p}${nearTerm?'<span class="admin-tl-near"> · soon</span>':''}</div>
+        <div class="admin-tl-meta">${proj.r} · ${all.length} units · ${st}% sold</div>
+      </div>
+      <div class="admin-tl-track2">
+        <div class="admin-tl-axis-line"></div>
+        <div class="admin-tl-marker" style="left:${pct}%">
+          <div class="admin-tl-marker-date">${proj.cd.slice(0,7)}</div>
+          <div class="admin-tl-marker-pin"></div>
+          <div class="admin-tl-stacked">
+            <div style="width:${dW}%;background:var(--dark)"  title="Deeded ${deeded}"></div>
+            <div style="width:${pW}%;background:var(--green)" title="PSPA ${pspa}"></div>
+            <div style="width:${rW}%;background:#8BB89A"      title="Reserved ${reserved}"></div>
+            <div style="width:${aW}%;background:var(--beige)" title="Available ${avail}"></div>
+            ${uW>0?`<div style="width:${uW}%;background:#ddd" title="Upon Request ${ur}"></div>`:''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const tbdRows=tbdProjs.map(proj=>{
+    const d=proj.all.filter(u=>u.s==='Deeded').length, p=proj.all.filter(u=>u.s==='PSPA').length, a=proj.all.filter(u=>u.s==='Available').length;
+    return `<tr><td>${proj.p}</td><td>${proj.r}</td><td class="num">${proj.all.length}</td><td class="num">${d}</td><td class="num">${p}</td><td class="num">${a}</td><td class="num">${adminSellThrough(proj.all)}%</td></tr>`;
+  }).join('');
+
+  el.innerHTML=`
+    <div class="admin-section"><div class="admin-section-label">Units by Delivery Year</div><div class="admin-kpi-grid">${yearKpis}</div></div>
+    <div class="admin-section" style="margin-top:48px;">
+      <div class="admin-section-label">Delivery Timeline</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:20px;">
+        <span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;"><span style="width:10px;height:10px;background:var(--dark);display:inline-block;border-radius:1px"></span>Deeded</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;"><span style="width:10px;height:10px;background:var(--green);display:inline-block;border-radius:1px"></span>PSPA</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;"><span style="width:10px;height:10px;background:#8BB89A;display:inline-block;border-radius:1px"></span>Reserved</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:var(--beige);border:1px solid var(--border);display:inline-block;border-radius:1px"></span>Available</span>
+      </div>
+      <div class="admin-tl2-wrap">
+        <div class="admin-tl-axis2">${yearMarkers}</div>
+        <div class="admin-tl-rows2">${projRows}</div>
+      </div>
+    </div>
+    ${tbdRows?`<div class="admin-section" style="margin-top:48px;">
+      <div class="admin-section-label">Completion Date TBD / Delivered</div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
+        <th>Project</th><th>Region</th><th class="num">Total</th><th class="num">Deeded</th><th class="num">PSPA</th><th class="num">Available</th><th class="num">Sell-Through</th>
+      </tr></thead><tbody>${tbdRows}</tbody></table></div>
+    </div>`:''}
   `;
 }
 
