@@ -1382,28 +1382,31 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
   .admin-modal-overlay.open .admin-modal { transform: translateY(0); }
   .admin-modal-eyebrow { font-size: 10px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
   .admin-modal-title { font-size: 22px; font-family: 'Cormorant Garamond', serif; font-weight: 400; color: var(--dark); margin-bottom: 24px; line-height: 1.2; }
+  .admin-modal-form-row { display: flex; }
   .admin-modal-input {
-    width: 100%; box-sizing: border-box;
-    border: 1px solid var(--border); border-radius: 6px;
+    flex: 1; min-width: 0; box-sizing: border-box;
+    border: 1px solid var(--border); border-right: none;
+    border-radius: 6px 0 0 6px;
     padding: 12px 14px; font-size: 14px; color: var(--dark);
     background: var(--cream); letter-spacing: 0.12em; outline: none;
     transition: border-color 0.2s;
   }
   .admin-modal-input:focus { border-color: var(--dark); }
-  .admin-modal-error { font-size: 12px; color: #c0392b; margin-top: 8px; min-height: 16px; }
-  .admin-modal-actions { display: flex; gap: 10px; margin-top: 20px; }
   .admin-modal-submit {
-    flex: 1; padding: 12px; background: var(--dark); color: var(--white);
-    border: none; border-radius: 6px; font-size: 13px; cursor: pointer;
-    font-family: inherit; letter-spacing: 0.04em; transition: opacity 0.2s;
+    padding: 0 20px; background: var(--dark); color: var(--white);
+    border: none; border-radius: 0 6px 6px 0; font-size: 13px; cursor: pointer;
+    font-family: inherit; letter-spacing: 0.06em; transition: opacity 0.2s;
+    white-space: nowrap; flex-shrink: 0;
   }
-  .admin-modal-submit:hover { opacity: 0.85; }
+  .admin-modal-submit:hover { opacity: 0.82; }
+  .admin-modal-error { font-size: 12px; color: #c0392b; margin-top: 8px; min-height: 16px; }
+  .admin-modal-actions { margin-top: 14px; display: flex; justify-content: flex-end; }
   .admin-modal-cancel {
-    padding: 12px 18px; background: none; border: 1px solid var(--border);
-    border-radius: 6px; font-size: 13px; cursor: pointer; color: var(--muted);
-    font-family: inherit; transition: all 0.2s;
+    background: none; border: none; font-size: 12px; cursor: pointer;
+    color: var(--muted); font-family: inherit; letter-spacing: 0.05em;
+    padding: 0; transition: color 0.2s;
   }
-  .admin-modal-cancel:hover { border-color: var(--dark); color: var(--dark); }
+  .admin-modal-cancel:hover { color: var(--dark); }
 </style>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -5101,48 +5104,163 @@ function renderAdminQuality() {
   if (!el) return;
   const units = ADMIN_UNITS;
   const total = units.length;
+  const today = new Date().toISOString().slice(0,10);
 
-  const fields = [
-    { label: 'Current Price',     check: u => !!u.pc },
-    { label: 'Initial Price',     check: u => !!u.pi },
-    { label: 'Total Area',        check: u => !!u.a && u.a > 0 },
-    { label: 'Completion Date',   check: u => !!u.cd },
-    { label: 'Typology',          check: u => !!u.t },
-    { label: 'Commercial Owner',  check: u => !!u.co },
-    { label: 'Reservation Date',  check: u => !!u.rd || u.s==='Available' || u.s==='Not for Sale' || u.s==='Upon Request' },
+  /* ── helpers ── */
+  const fmtP = v => v ? '€'+Math.round(v/1000)+'k' : '—';
+  const SOLD_S = ['Reserved','PSPA','Deeded'];
+
+  /* ── RED FLAG DEFINITIONS ── */
+  const FLAGS = [
+    {
+      id:'neg_disc', severity:'critical',
+      label:'Negative Discount',
+      desc:'Sell price is higher than current asking price — discount is recorded as negative. This is a data entry error.',
+      check: u => typeof u.disc === 'number' && u.disc < 0,
+      cols: ['Project','Unit','Status','Current Price','Sell Price','Discount'],
+      row:  u => [u.p, u.u, u.s, fmtP(u.pc), fmtP(u.ps), (u.disc||0).toFixed(1)+'%'],
+    },
+    {
+      id:'ps_gt_pc', severity:'critical',
+      label:'Sell Price Exceeds Current Price',
+      desc:'The recorded sell price is higher than the current asking price. Either the current price was not updated after negotiation, or the sell price is wrong.',
+      check: u => u.ps && u.pc && u.ps > u.pc,
+      cols: ['Project','Unit','Status','Current Price','Sell Price','Diff'],
+      row:  u => [u.p, u.u, u.s, fmtP(u.pc), fmtP(u.ps), '+'+fmtP(u.ps-u.pc)],
+    },
+    {
+      id:'sold_no_sell', severity:'critical',
+      label:'Sold / Reserved — Missing Sell Price',
+      desc:'Unit is Reserved, PSPA, or Deeded but has no sell price recorded. Revenue figures and sell-through values will be inaccurate.',
+      check: u => SOLD_S.includes(u.s) && !u.ps,
+      cols: ['Project','Unit','Typology','Status','Current Price','Owner'],
+      row:  u => [u.p, u.u, u.t||'—', u.s, fmtP(u.pc), u.co||'—'],
+    },
+    {
+      id:'deeded_no_date', severity:'critical',
+      label:'Deeded — No Reservation Date',
+      desc:'Unit is fully Deeded but has no PSPA/reservation date recorded. The sales timeline is incomplete.',
+      check: u => u.s === 'Deeded' && !u.rd,
+      cols: ['Project','Unit','Typology','Sell Price','Owner'],
+      row:  u => [u.p, u.u, u.t||'—', fmtP(u.ps), u.co||'—'],
+    },
+    {
+      id:'pspa_no_date', severity:'warning',
+      label:'Reserved / PSPA — No Reservation Date',
+      desc:'Unit is committed but the reservation date is not recorded. This affects velocity analysis and pipeline reporting.',
+      check: u => ['Reserved','PSPA'].includes(u.s) && !u.rd,
+      cols: ['Project','Unit','Typology','Status','Current Price','Owner'],
+      row:  u => [u.p, u.u, u.t||'—', u.s, fmtP(u.pc), u.co||'—'],
+    },
+    {
+      id:'overdue', severity:'warning',
+      label:'Overdue Delivery — Not Yet Deeded',
+      desc:'Completion date has already passed but the unit is not Deeded. Either the delivery was delayed or the status was not updated.',
+      check: u => u.cd && u.cd < today && u.s !== 'Deeded' && u.s !== 'Not for Sale',
+      cols: ['Project','Unit','Status','Expected Delivery','Owner'],
+      row:  u => [u.p, u.u, u.s, u.cd, u.co||'—'],
+    },
+    {
+      id:'avail_with_date', severity:'warning',
+      label:'Available — Has Reservation Date',
+      desc:'Unit shows as Available but has a reservation date recorded. Likely a status mismatch — may already be committed.',
+      check: u => u.s === 'Available' && u.rd,
+      cols: ['Project','Unit','Typology','Reservation Date','Current Price'],
+      row:  u => [u.p, u.u, u.t||'—', u.rd, fmtP(u.pc)],
+    },
+    {
+      id:'big_cut', severity:'info',
+      label:'Heavy Price Cut (> 20% off Initial)',
+      desc:'Current asking price is more than 20% below the initial asking price. Flag for review — may indicate distress pricing or data error.',
+      check: u => u.pi && u.pc && u.pc < u.pi * 0.80 && u.s !== 'Not for Sale',
+      cols: ['Project','Unit','Typology','Initial Price','Current Price','Cut'],
+      row:  u => [u.p, u.u, u.t||'—', fmtP(u.pi), fmtP(u.pc), '-'+Math.round((1-u.pc/u.pi)*100)+'%'],
+    },
+    {
+      id:'no_price_active', severity:'info',
+      label:'Active Unit — No Price',
+      desc:'Available or Upon Request unit has no current asking price. It cannot be evaluated or compared.',
+      check: u => ['Available','Upon Request'].includes(u.s) && !u.pc,
+      cols: ['Project','Unit','Typology','Status','Area','Owner'],
+      row:  u => [u.p, u.u, u.t||'—', u.s, u.a ? u.a+'m²' : '—', u.co||'—'],
+    },
+    {
+      id:'no_owner_active', severity:'info',
+      label:'Active Unit — No Commercial Owner',
+      desc:'Available or Reserved unit has no commercial owner assigned. It is effectively unmanaged.',
+      check: u => ['Available','Reserved','PSPA'].includes(u.s) && !u.co,
+      cols: ['Project','Unit','Typology','Status','Current Price'],
+      row:  u => [u.p, u.u, u.t||'—', u.s, fmtP(u.pc)],
+    },
   ];
 
+  /* ── evaluate flags ── */
+  const evaluated = FLAGS.map(f => ({ ...f, hits: units.filter(f.check) }));
+  const criticals  = evaluated.filter(f => f.severity==='critical' && f.hits.length>0);
+  const warnings   = evaluated.filter(f => f.severity==='warning'  && f.hits.length>0);
+  const infos      = evaluated.filter(f => f.severity==='info'     && f.hits.length>0);
+  const totalFlags = evaluated.reduce((s,f)=>s+f.hits.length, 0);
+  const cleanFlags = evaluated.filter(f=>f.hits.length===0).length;
+
+  /* ── flag KPIs ── */
+  const critCount = criticals.reduce((s,f)=>s+f.hits.length,0);
+  const warnCount = warnings.reduce((s,f)=>s+f.hits.length,0);
+  const infoCount = infos.reduce((s,f)=>s+f.hits.length,0);
+
+  /* ── render a flag block ── */
+  function renderFlag(f) {
+    const sColor = f.severity==='critical'?'#c0392b': f.severity==='warning'?'#e67e22':'#2980b9';
+    const sBg    = f.severity==='critical'?'#fdf3f2': f.severity==='warning'?'#fef9f0':'#f0f7ff';
+    const sLabel = f.severity==='critical'?'CRITICAL': f.severity==='warning'?'WARNING':'NOTE';
+    const rowsHtml = f.hits.map(u=>`<tr>${f.row(u).map(v=>`<td>${v}</td>`).join('')}</tr>`).join('');
+    return `<div class="admin-flag-block" style="border-left:3px solid ${sColor};background:${sBg};padding:14px 18px;border-radius:0 6px 6px 0;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+        <span style="font-size:10px;font-weight:600;color:${sColor};letter-spacing:0.08em;background:${sColor}22;padding:2px 7px;border-radius:3px;">${sLabel}</span>
+        <span style="font-size:13px;font-weight:500;color:var(--dark);flex:1">${f.label}</span>
+        <span style="font-size:13px;font-weight:600;color:${sColor}">${f.hits.length}</span>
+        <span style="font-size:11px;color:var(--muted)">unit${f.hits.length!==1?'s':''} ▾</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin:6px 0 0 0;">${f.desc}</div>
+      <div style="display:none;margin-top:12px;">
+        <div class="admin-table-wrap"><table class="admin-table" style="font-size:12px;">
+          <thead><tr>${f.cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table></div>
+      </div>
+    </div>`;
+  }
+
+  /* ── completeness fields ── */
+  const fields = [
+    { label:'Current Price',    check: u => !!u.pc },
+    { label:'Initial Price',    check: u => !!u.pi },
+    { label:'Total Area',       check: u => !!u.a && u.a > 0 },
+    { label:'Completion Date',  check: u => !!u.cd },
+    { label:'Typology',         check: u => !!u.t },
+    { label:'Commercial Owner', check: u => !!u.co },
+    { label:'Reservation Date', check: u => !!u.rd || u.s==='Available' || u.s==='Not for Sale' || u.s==='Upon Request' },
+  ];
   const fieldRows = fields.map(f => {
-    const present = units.filter(f.check).length;
-    const missing = total - present;
-    const pct = Math.round(present/total*100);
-    const color = pct>=95?'var(--green)':pct>=80?'#f0a500':'#c0392b';
-    return `<tr>
-      <td>${f.label}</td>
-      <td class="num">${present.toLocaleString()}</td>
+    const present=units.filter(f.check).length, missing=total-present, pct=Math.round(present/total*100);
+    const color=pct>=95?'var(--green)':pct>=80?'#f0a500':'#c0392b';
+    return `<tr><td>${f.label}</td><td class="num">${present.toLocaleString()}</td>
       <td class="num" style="color:${missing?'#c0392b':'var(--muted)'}">${missing||'—'}</td>
-      <td class="num">
-        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
-          <div style="width:80px;height:4px;background:var(--beige);border-radius:2px;overflow:hidden;">
-            <div style="width:${pct}%;height:100%;background:${color};border-radius:2px;"></div>
-          </div>
-          <span style="color:${color};font-weight:500;min-width:32px;">${pct}%</span>
-        </div>
-      </td>
-    </tr>`;
+      <td class="num"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
+        <div style="width:80px;height:4px;background:var(--beige);border-radius:2px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${color};border-radius:2px;"></div></div>
+        <span style="color:${color};font-weight:500;min-width:32px;">${pct}%</span>
+      </div></td></tr>`;
   }).join('');
 
+  /* ── by-project completeness ── */
   const byProj = {};
-  units.forEach(u => { if (!byProj[u.p]) byProj[u.p]=[]; byProj[u.p].push(u); });
-  const projRows = Object.entries(byProj).map(([p,us]) => {
+  units.forEach(u=>{ if(!byProj[u.p])byProj[u.p]=[]; byProj[u.p].push(u); });
+  const projRows = Object.entries(byProj).map(([p,us])=>{
     const n=us.length, noPrice=us.filter(u=>!u.pc).length, noArea=us.filter(u=>!u.a||u.a<=0).length,
           noCd=us.filter(u=>!u.cd).length, noTypo=us.filter(u=>!u.t).length, noOwner=us.filter(u=>!u.co).length;
-    const issues=noPrice+noArea+noCd+noTypo+noOwner;
-    const pct=Math.round((1-issues/(n*5))*100);
+    const issues=noPrice+noArea+noCd+noTypo+noOwner, pct=Math.round((1-issues/(n*5))*100);
     const color=pct>=95?'var(--green)':pct>=80?'#f0a500':'#c0392b';
     return {p,n,noPrice,noArea,noCd,noTypo,noOwner,pct,color};
   }).sort((a,b)=>a.pct-b.pct);
-
   const projQRows = projRows.map(r=>`<tr>
     <td>${r.p}</td><td class="num">${r.n}</td>
     <td class="num" style="color:${r.noPrice?'#c0392b':'var(--muted)'}">${r.noPrice||'—'}</td>
@@ -5153,28 +5271,41 @@ function renderAdminQuality() {
     <td class="num" style="color:${r.color};font-weight:500">${r.pct}%</td>
   </tr>`).join('');
 
-  const overallIssues = projRows.reduce((s,r)=>s+(r.noPrice+r.noArea+r.noCd+r.noTypo+r.noOwner),0);
-  const overallPct = Math.round((1-overallIssues/(total*5))*100);
-  const overallColor = overallPct>=95?'var(--green)':overallPct>=80?'#f0a500':'#c0392b';
+  const overallIssues=projRows.reduce((s,r)=>s+(r.noPrice+r.noArea+r.noCd+r.noTypo+r.noOwner),0);
+  const overallPct=Math.round((1-overallIssues/(total*5))*100);
+  const overallColor=overallPct>=95?'var(--green)':overallPct>=80?'#f0a500':'#c0392b';
 
   el.innerHTML = `
+    <!-- KPI summary -->
     <div class="admin-section">
-      <div class="admin-section-label">Data Completeness Overview</div>
       <div class="admin-kpi-grid">
         <div class="admin-kpi"><div class="admin-kpi-label">Total Units</div><div class="admin-kpi-value">${total.toLocaleString()}</div></div>
-        <div class="admin-kpi"><div class="admin-kpi-label">Overall Score</div><div class="admin-kpi-value" style="color:${overallColor}">${overallPct}%</div></div>
-        <div class="admin-kpi"><div class="admin-kpi-label">Missing Prices</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.pc).length?'#c0392b':'var(--dark)'}">${units.filter(u=>!u.pc).length}</div></div>
-        <div class="admin-kpi"><div class="admin-kpi-label">Missing Areas</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.a||u.a<=0).length?'#f0a500':'var(--dark)'}">${units.filter(u=>!u.a||u.a<=0).length}</div></div>
-        <div class="admin-kpi"><div class="admin-kpi-label">Missing Compl. Date</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.cd).length?'#f0a500':'var(--dark)'}">${units.filter(u=>!u.cd).length}</div></div>
-        <div class="admin-kpi"><div class="admin-kpi-label">Missing Owner</div><div class="admin-kpi-value" style="color:${units.filter(u=>!u.co).length?'#f0a500':'var(--dark)'}">${units.filter(u=>!u.co).length}</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Completeness Score</div><div class="admin-kpi-value" style="color:${overallColor}">${overallPct}%</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Critical Issues</div><div class="admin-kpi-value" style="color:${critCount?'#c0392b':'var(--green)'}">${critCount}</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Warnings</div><div class="admin-kpi-value" style="color:${warnCount?'#e67e22':'var(--green)'}">${warnCount}</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Notes</div><div class="admin-kpi-value" style="color:${infoCount?'#2980b9':'var(--green)'}">${infoCount}</div></div>
+        <div class="admin-kpi"><div class="admin-kpi-label">Checks Passed</div><div class="admin-kpi-value" style="color:var(--green)">${cleanFlags} / ${FLAGS.length}</div></div>
       </div>
     </div>
-    <div class="admin-section" style="margin-top:40px;">
+
+    <!-- Red flags -->
+    <div class="admin-section" style="margin-top:36px;">
+      <div class="admin-section-label">Red Flags <span style="font-size:11px;color:var(--muted);font-weight:400">— click any row to expand affected units</span></div>
+      ${criticals.length ? '<div style="margin-bottom:8px;font-size:11px;font-weight:600;color:#c0392b;letter-spacing:0.06em;text-transform:uppercase;">Critical</div>' + criticals.map(renderFlag).join('') : ''}
+      ${warnings.length  ? '<div style="margin-bottom:8px;margin-top:16px;font-size:11px;font-weight:600;color:#e67e22;letter-spacing:0.06em;text-transform:uppercase;">Warnings</div>' + warnings.map(renderFlag).join('') : ''}
+      ${infos.length     ? '<div style="margin-bottom:8px;margin-top:16px;font-size:11px;font-weight:600;color:#2980b9;letter-spacing:0.06em;text-transform:uppercase;">Notes</div>' + infos.map(renderFlag).join('') : ''}
+      ${totalFlags===0   ? '<div style="color:var(--green);font-size:14px;padding:16px 0;">No issues found — data looks clean.</div>' : ''}
+    </div>
+
+    <!-- Field completeness -->
+    <div class="admin-section" style="margin-top:48px;">
       <div class="admin-section-label">Field Completeness</div>
       <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
         <th>Field</th><th class="num">Present</th><th class="num">Missing</th><th class="num">Coverage</th>
       </tr></thead><tbody>${fieldRows}</tbody></table></div>
     </div>
+
+    <!-- By project -->
     <div class="admin-section" style="margin-top:48px;">
       <div class="admin-section-label">By Project <span style="font-size:11px;color:var(--muted);font-weight:400">(worst first)</span></div>
       <div class="admin-table-wrap"><table class="admin-table"><thead><tr>
@@ -5380,10 +5511,12 @@ function escapeAttr(str) {
       <div class="admin-modal-eyebrow">Restricted</div>
       <div class="admin-modal-title">Administrator<br>Access</div>
       <form id="admin-modal-form" autocomplete="off">
-        <input class="admin-modal-input" id="admin-modal-input" type="password" placeholder="Enter admin code" autocomplete="new-password" />
+        <div class="admin-modal-form-row">
+          <input class="admin-modal-input" id="admin-modal-input" type="password" placeholder="Enter admin code" autocomplete="new-password" />
+          <button type="submit" class="admin-modal-submit">Enter</button>
+        </div>
         <div class="admin-modal-error" id="admin-modal-error"></div>
         <div class="admin-modal-actions">
-          <button type="submit" class="admin-modal-submit">Enter</button>
           <button type="button" class="admin-modal-cancel" id="admin-modal-cancel">Cancel</button>
         </div>
       </form>
