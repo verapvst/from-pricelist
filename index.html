@@ -1351,6 +1351,19 @@ button { cursor: pointer; border: none; background: none; font: inherit; }
     .project-grid-v2 { grid-template-columns: 1fr 1fr !important; }
   }
 
+  /* Mobile card: tighten layout for narrow 2-col cells */
+  @media (max-width: 640px) {
+    .card-v2-body { padding: 12px 12px 14px; }
+    .card-v2-name { font-size: 17px; margin-bottom: 8px; }
+    .card-v2-price { font-size: 16px; }
+    .card-v2-price-row { flex-wrap: wrap; gap: 3px 6px; margin-bottom: 10px; }
+    .card-v2-price-sub { font-size: 10px; white-space: nowrap; width: 100%; margin-left: 0; font-style: normal; color: var(--muted); }
+    .card-v2-region { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 56px); }
+    .card-v2-completion { white-space: nowrap; flex-shrink: 0; }
+    .card-v2-tags { gap: 4px; padding-top: 8px; }
+    .lifestyle-tag-v2 { font-size: 9px; padding: 2px 6px; }
+  }
+
   /* ─── PHASE 3 · PROJECT PAGE ─── */
 
   /* Hero: add price + CTA row */
